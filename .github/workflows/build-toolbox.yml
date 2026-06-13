@@ -191,6 +191,10 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = "flutter/build/windows/x64/runner/Release"
+          if (-not (Test-Path $releaseDir)) {
+            $releaseDir = "build/windows/x64/runner/Release"
+          }
+          Write-Host "Release dir: $releaseDir"
           if (Test-Path $releaseDir) {
             # Copy topmost window DLL
             Copy-Item WindowInjection.dll $releaseDir/ -ErrorAction SilentlyContinue
