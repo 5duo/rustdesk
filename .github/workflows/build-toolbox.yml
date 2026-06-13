@@ -79,16 +79,12 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Clone RustDeskTempTopMostWindow
+      - name: Clone and build RustDeskTempTopMostWindow
+        shell: pwsh
         run: |
           git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow
           cd RustDeskTempTopMostWindow
           git checkout v0.3
-
-      - name: Build WindowInjection.dll
-        shell: pwsh
-        run: |
-          Set-Location -Path "RustDeskTempTopMostWindow"
           msbuild WindowInjection.sln /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22621.0
 
       - name: Upload DLL
