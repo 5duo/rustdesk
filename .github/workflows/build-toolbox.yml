@@ -38,7 +38,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.82"
+          toolchain: stable
 
       - name: Install Flutter (for bridge gen only)
         uses: subosito/flutter-action@v2.12.0
@@ -85,7 +85,7 @@ jobs:
           git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow
           cd RustDeskTempTopMostWindow
           git checkout v0.3
-          msbuild WindowInjection.sln /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22621.0
+          msbuild TempTopMostWindow.sln /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22621.0
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
