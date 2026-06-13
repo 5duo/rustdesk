@@ -43,7 +43,7 @@ jobs:
       - name: Install Flutter (for bridge gen only)
         uses: subosito/flutter-action@v2.12.0
         with:
-          flutter-version: '3.22.3'
+          flutter-version: 'undefined'
           channel: 'stable'
 
       - name: Install bridge tools
