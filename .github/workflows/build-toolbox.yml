@@ -48,7 +48,7 @@ jobs:
 
       - name: Install bridge tools
         run: |
-          cargo install cargo-expand@1.0.95
+          cargo install cargo-expand@1.0.99
           cargo install flutter_rust_bridge_codegen@1.80.1
 
       - name: Generate bridge
@@ -75,6 +75,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
       - name: Clone RustDeskTempTopMostWindow
         run: |
