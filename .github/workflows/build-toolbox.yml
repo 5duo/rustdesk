@@ -205,8 +205,10 @@ jobs:
               Rename-Item $exePath "rustdesk-core.exe"
             }
 
-            # Rename output folder
-            Rename-Item $releaseDir "rustdesk-core"
+            # Move output folder to repo root
+            $targetPath = "$PWD/rustdesk-core"
+            if (Test-Path $targetPath) { Remove-Item $targetPath -Recurse -Force }
+            Move-Item $releaseDir $targetPath
           }
 
       - name: Upload artifact
