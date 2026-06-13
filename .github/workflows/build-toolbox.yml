@@ -155,6 +155,7 @@ jobs:
 
       - name: Apply Flutter dropdown patch
         shell: pwsh
+        continue-on-error: true
         run: |
           $flutterSdk = "C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64"
           if (Test-Path ".github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff") {
