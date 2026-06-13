@@ -126,11 +126,7 @@ jobs:
             (Get-Content $configPath) -replace '"RustDesk"', '"ToolboxRemote"' | Set-Content $configPath
             Write-Host 'Patched APP_NAME in hbb_common'
           }
-          # Patch window title in Flutter
-          $mainDart = 'flutter/lib/main.dart'
-          if (Test-Path $mainDart) {
-            (Get-Content $mainDart) -replace 'RustDesk', 'Toolbox Remote' | Set-Content $mainDart
-          }
+          # Skip main.dart patching - brand is handled in common.dart, patching here breaks Dart syntax
 
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v1
