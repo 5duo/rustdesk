@@ -115,6 +115,21 @@ jobs:
           name: topmostwindow-artifacts
           path: ./
 
+      - name: Apply branding patch
+        shell: pwsh
+        run: |
+          # Patch APP_NAME in submodule
+          $configPath = 'libs/hbb_common/src/config.rs'
+          if (Test-Path $configPath) {
+            (Get-Content $configPath) -replace '"RustDesk"', '"ToolboxRemote"' | Set-Content $configPath
+            Write-Host 'Patched APP_NAME in hbb_common'
+          }
+          # Patch window title in Flutter
+          $mainDart = 'flutter/lib/main.dart'
+          if (Test-Path $mainDart) {
+            (Get-Content $mainDart) -replace 'RustDesk', 'Toolbox Remote' | Set-Content $mainDart
+          }
+
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v1
         with:
