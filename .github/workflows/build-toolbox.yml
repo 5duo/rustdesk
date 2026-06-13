@@ -1,0 +1,217 @@
+# RustDesk Windows Build - Simplified GitHub Actions Workflow
+# 将此文件放到你 fork 的 rustdesk 仓库的 .github/workflows/build-toolbox.yml
+#
+# 触发方式：
+#   1. 推送 tag (v*) 时自动构建
+#   2. 手动触发 (workflow_dispatch)
+#
+# 构建时间约 1-2 小时，产出 Windows x64 Flutter 版本
+
+name: Build Toolbox Remote (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_version:
+        description: 'Build version override'
+        required: false
+        default: ''
+
+env:
+  RUST_VERSION: '1.75'
+  FLUTTER_VERSION: '3.24.5'
+  VCPKG_COMMIT: '120deac3062162151622ca4860575a33844ba10b'
+  LLVM_VERSION: '15.0.6'
+
+jobs:
+  # Job 1: Generate FFI bridge files (runs on Ubuntu, faster)
+  generate-bridge:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install Flutter (for bridge gen only)
+        uses: subosito/flutter-action@v2.12.0
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Install bridge tools
+        run: |
+          cargo install cargo-expand@1.0.95
+          cargo install flutter_rust_bridge_codegen@1.80.1
+
+      - name: Flutter pub get
+        run: cd flutter && flutter pub get
+
+      - name: Generate bridge
+        run: |
+          flutter_rust_bridge_codegen \
+            --rust-input ./src/flutter_ffi.rs \
+            --dart-output ./flutter/lib/generated_bridge.dart \
+            --c-output ./flutter/macos/Runner/bridge_generated.h
+
+      - name: Upload bridge artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-artifact
+          path: |
+            src/bridge_generated.rs
+            src/bridge_generated.io.rs
+            flutter/lib/generated_bridge.dart
+            flutter/lib/generated_bridge.freezed.dart
+            flutter/macos/Runner/bridge_generated.h
+            flutter/windows/runner/bridge_generated.h
+
+  # Job 2: Build RustDeskTempTopMostWindow DLL
+  build-topmost-dll:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Clone and build RustDeskTempTopMostWindow
+        shell: pwsh
+        run: |
+          git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow
+          cd RustDeskTempTopMostWindow
+          git checkout v0.3
+          msbuild TempTopMostWindow.sln /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.22621.0
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: topmostwindow-artifacts
+          path: RustDeskTempTopMostWindow/x64/Release/WindowInjection.dll
+
+  # Job 3: Main Windows Flutter build
+  build-windows:
+    needs: [generate-bridge, build-topmost-dll]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download bridge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Download topmost window DLL
+        uses: actions/download-artifact@v4
+        with:
+          name: topmostwindow-artifacts
+          path: ./
+
+      - name: Apply branding patch
+        shell: pwsh
+        run: |
+          # Patch APP_NAME in submodule
+          $configPath = 'libs/hbb_common/src/config.rs'
+          if (Test-Path $configPath) {
+            (Get-Content $configPath) -replace '"RustDesk"', '"ToolboxRemote"' | Set-Content $configPath
+            Write-Host 'Patched APP_NAME in hbb_common'
+          }
+          # Skip main.dart patching - brand is handled in common.dart, patching here breaks Dart syntax
+
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: ${{ env.LLVM_VERSION }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2.12.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Replace with custom Flutter engine
+        shell: pwsh
+        run: |
+          flutter doctor -v
+          flutter precache --windows
+          Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
+          $flutterPath = "C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/"
+          mv -Force windows-x64-release/* $flutterPath
+
+      - name: Apply Flutter dropdown patch
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $flutterSdk = "C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64"
+          if (Test-Path ".github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff") {
+            git apply --directory=$flutterSdk .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+          }
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: 'C:\vcpkg'
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
+        run: |
+          vcpkg install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT/installed"
+
+      - name: Build RustDesk
+        shell: pwsh
+        run: |
+          python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+
+      - name: Prepare output
+        shell: pwsh
+        run: |
+          $releaseDir = "flutter/build/windows/x64/runner/Release"
+          if (-not (Test-Path $releaseDir)) {
+            $releaseDir = "build/windows/x64/runner/Release"
+          }
+          Write-Host "Release dir: $releaseDir"
+          if (Test-Path $releaseDir) {
+            # Copy topmost window DLL
+            Copy-Item WindowInjection.dll $releaseDir/ -ErrorAction SilentlyContinue
+
+            # Rename exe for toolbox integration
+            $exePath = "$releaseDir/rustdesk.exe"
+            if (Test-Path $exePath) {
+              Rename-Item $exePath "rustdesk-core.exe"
+            }
+
+            # Rename output folder
+            Rename-Item $releaseDir "rustdesk-core"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolbox-remote-windows-x64
+          path: rustdesk-core/
+          retention-days: 30
